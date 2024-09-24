@@ -86,6 +86,7 @@ impl TodoList {
 	}
 
 	pub fn save_to_file(&self) {
+		eprintln!("Saving todolist to file...");
 		if !self.assign_dir.try_exists().unwrap() {
 			fs::create_dir(self.assign_dir.as_path()).unwrap();
 		}
@@ -106,6 +107,7 @@ impl TodoList {
 				TodoList::write_str_to_file(assign_path.join("time"), assign.due_date.time().format("%H:%M").to_string());
 			}
 		}
+		eprintln!("Finish writing todolist...");
 	}
 
 	fn read_file_sans_newline<P>(file_path: P) -> String
