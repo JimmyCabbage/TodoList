@@ -57,23 +57,25 @@ impl TodoList {
 								match e.file_name().to_str().unwrap() {
 									"date" => {
 										let file_data = TodoList::read_file_sans_newline(path);
-										date = Some(NaiveDate::parse_from_str(&file_data, "%Y-%m-%d").unwrap());
+										date = NaiveDate::parse_from_str(&file_data, "%Y-%m-%d").ok();
 									}
 									"time" => {
 										let file_data = TodoList::read_file_sans_newline(path);
-										time = Some(NaiveTime::parse_from_str(&file_data, "%H:%M").unwrap());
+										time = NaiveTime::parse_from_str(&file_data, "%H:%M").ok();
 									}
 									_ => (),
 								};
 							});
 
-						let due_date = NaiveDateTime::new(date.unwrap(), time.unwrap())
-							.and_local_timezone(Local)
-							.unwrap();
-						assignments.push(Assignment {
-							due_date,
-							name,
-						});
+						if let (Some(good_date), Some(good_time)) = (date, time) {
+							let due_date = NaiveDateTime::new(good_date, good_time)
+								.and_local_timezone(Local)
+								.unwrap();
+							assignments.push(Assignment {
+								due_date,
+								name,
+							});
+						}
 					});
 			});
 		
@@ -81,6 +83,29 @@ impl TodoList {
 			assignments_by_class,
 			assign_dir: PathBuf::from(load_dir.as_ref()),
 		})
+	}
+
+	pub fn save_to_file(&self) {
+		if !self.assign_dir.try_exists().unwrap() {
+			fs::create_dir(self.assign_dir.as_path()).unwrap();
+		}
+
+		for (class, assignments) in &self.assignments_by_class {
+			let class_path = self.assign_dir.join(class);
+			if !class_path.try_exists().unwrap() {
+				fs::create_dir(class_path.as_path()).unwrap();
+			}
+
+			for assign in assignments {
+				let assign_path = class_path.join(&assign.name);
+				if !assign_path.try_exists().unwrap() {
+					fs::create_dir(assign_path.as_path()).unwrap();
+				}
+
+				TodoList::write_str_to_file(assign_path.join("date"), assign.due_date.date_naive().format("%Y-%m-%d").to_string());
+				TodoList::write_str_to_file(assign_path.join("time"), assign.due_date.time().format("%H:%M").to_string());
+			}
+		}
 	}
 
 	fn read_file_sans_newline<P>(file_path: P) -> String
@@ -112,26 +137,7 @@ impl TodoList {
 
 impl Drop for TodoList {
 	fn drop(&mut self) {
-		if !self.assign_dir.try_exists().unwrap() {
-			fs::create_dir(self.assign_dir.as_path()).unwrap();
-		}
-
-		for (class, assignments) in &self.assignments_by_class {
-			let class_path = self.assign_dir.join(class);
-			if !class_path.try_exists().unwrap() {
-				fs::create_dir(class_path.as_path()).unwrap();
-			}
-
-			for assign in assignments {
-				let assign_path = class_path.join(&assign.name);
-				if !assign_path.try_exists().unwrap() {
-					fs::create_dir(assign_path.as_path()).unwrap();
-				}
-
-				TodoList::write_str_to_file(assign_path.join("date"), assign.due_date.date_naive().format("%Y-%m-%d").to_string());
-				TodoList::write_str_to_file(assign_path.join("time"), assign.due_date.time().format("%H:%M").to_string());
-			}
-		}
+		self.save_to_file();
 	}
 }
 
