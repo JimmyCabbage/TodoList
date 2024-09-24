@@ -1,8 +1,9 @@
 [package]
 name = "todolist"
-version = "0.1.4"
+version = "0.2.0"
 edition = "2021"
 
 [dependencies]
 chrono = "0.4.38"
+cursive = "0.21.1"
 clap = { version = "4.5.18", features = ["derive"] }
