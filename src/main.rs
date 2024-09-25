@@ -191,18 +191,27 @@ fn main() {
 }
 
 fn get_todo_text(sender: &Sender<MainMessage>, receiver: &Receiver<TodoMessage>) -> Option<String> {
-	sender.send(MainMessage::GetWeekAssignments(Local::now())).unwrap();
-	if let TodoMessage::SendWeekAssignments(w) = receiver.recv().unwrap() {
-		Some(w.iter()
-			.map(|(_class, assignments)| {
-				assignments.iter()
-					.map(|assign| {
+					/*.map(|assign| {
 						let trunc_name = assign.name.chars().into_iter().take(24).collect::<String>();
 						String::from(format!("{:<24} {}\n", trunc_name, assign.due_date.format("Due %B %e, %l:%M %p")))
 					})
-					.fold(String::new(), |prev, s| prev + &s)
-			})
-			.fold(String::new(), |prev, s| prev + &s))
+					.fold(String::new(), |prev, s| prev + &s)*/
+	sender.send(MainMessage::GetWeekAssignments(Local::now())).unwrap();
+	if let TodoMessage::SendWeekAssignments(w) = receiver.recv().unwrap() {
+		let mut flat_assignments = vec![];
+		for (_class, assignments) in w {
+			for assign in assignments {
+				flat_assignments.push(assign);
+			}
+		}
+
+		flat_assignments.sort();
+
+		Some(flat_assignments.iter()
+			.map(|assign| {
+				let trunc_name = assign.name.chars().into_iter().take(24).collect::<String>();
+				String::from(format!("{:<24} {}\n", trunc_name, assign.due_date.format("Due %B %e, %l:%M %p")))
+			}).fold(String::new(), |prev, s| prev + &s))
 	}
 	else {
 		None
