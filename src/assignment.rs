@@ -1,4 +1,5 @@
 use chrono::{prelude::*, DateTime};
+use std::cmp::Ordering;
 
 pub struct Assignment {
 	pub due_date: DateTime<Local>,
@@ -46,19 +47,36 @@ pub struct Assignment {
 
 impl Clone for Assignment {
 	fn clone(&self) -> Self {
-		return Self {
+		Self {
 			due_date: self.due_date.clone(),
 			name: self.name.clone(),
-		};
+		}
 	}
 }
 
 impl PartialEq for Assignment {
 	fn eq(&self, other: &Self) -> bool {
-		return self.due_date == other.due_date &&
-			self.name == other.name;
+		self.due_date == other.due_date &&
+			self.name == other.name
 	}
 }
 
 impl Eq for Assignment {
+}
+
+impl Ord for Assignment {
+	fn cmp(&self, other: &Self) -> Ordering {
+		if self.due_date == other.due_date {
+			self.name.cmp(&other.name)
+		}
+		else {
+			self.due_date.cmp(&other.due_date)
+		}
+	}
+}
+
+impl PartialOrd for Assignment {
+	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+		Some(self.cmp(other))
+	}
 }
