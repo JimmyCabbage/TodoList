@@ -12,7 +12,7 @@ enum MainMessage {
 	NewAssignment(String, Assignment),
 	NewClass(String),
 	GetClassAssignments(String),
-	GetWeekAssignments(DateTime<Local>),
+	GetWeekAssignments(NaiveDate),
 	GetClasses,
 	CheckClassExists(String),
 }
@@ -91,7 +91,7 @@ impl TodoThreadInternal {
 								.clone()
 								.iter()
 								.filter(|assign| {
-									let offset = (assign.due_date - from_date).num_seconds();
+									let offset = (assign.due_date.date_naive() - from_date).num_seconds();
 									offset >= 0 && offset < 60 * 60 * 24 * 7
 								})
 								.map(|assign| assign.clone())
@@ -186,7 +186,7 @@ impl TodoThread {
 		}
 	}
 
-	pub fn get_week_assignments(&self, curr_time: DateTime<Local>) -> Result<HashMap<String, Vec<Assignment>>, ()> {
+	pub fn get_week_assignments(&self, curr_time: NaiveDate) -> Result<HashMap<String, Vec<Assignment>>, ()> {
 		self.main_send.send(MainMessage::GetWeekAssignments(curr_time)).unwrap();
 		if let TodoMessage::SendWeekAssignments(a) = self.todo_recv.recv().unwrap() {
 			Ok(a)

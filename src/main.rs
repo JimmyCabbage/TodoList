@@ -70,7 +70,7 @@ fn get_todo_text(todo_thread: Arc<TodoThread>) -> Option<String> {
 						String::from(format!("{:<24} {}\n", trunc_name, assign.due_date.format("Due %B %e, %l:%M %p")))
 					})
 					.fold(String::new(), |prev, s| prev + &s)*/
-	let week = todo_thread.get_week_assignments(Local::now()).unwrap();
+	let week = todo_thread.get_week_assignments(Local::now().date_naive()).unwrap();
 	let mut flat_assignments = vec![];
 	for (_class, assignments) in week {
 		for assign in assignments {
