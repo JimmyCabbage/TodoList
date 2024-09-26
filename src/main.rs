@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::vec::Vec;
 use chrono::{prelude::*, NaiveDateTime, NaiveDate, NaiveTime};
 use cursive::Cursive;
-use cursive::views::{Button, Dialog, DummyView, EditView, TextView, LinearLayout, SelectView, Menubar, ScrollView, Panel};
+use cursive::views::{Button, Dialog, DummyView, EditView, TextView, LinearLayout, SelectView, Menubar, ScrollView, Panel, Checkbox, NamedView, ListView};
 use cursive::traits::*;
 
 mod assignment;
@@ -41,9 +41,13 @@ fn main() {
 			.title("Classes")
 	};
 
-	let week_todo = Panel::new(TextView::new(get_todo_text(todo_thread.clone()).unwrap())
-		.with_name("todolist"))
-		.title("TODO This Week");
+	let week_todo = {
+		let mut vert = LinearLayout::vertical().with_name("weektodo");
+		make_todo_list(todo_thread.clone(), &mut (*vert.get_mut()));
+		let vert = ScrollView::new(vert);
+		Dialog::around(vert)
+			.title("TODO This Week")
+	};
 
 	let info_view = LinearLayout::horizontal()
 		.child(classes_view)
@@ -64,27 +68,40 @@ fn main() {
 	siv.run();
 }
 
-fn get_todo_text(todo_thread: Arc<TodoThread>) -> Option<String> {
+fn make_todo_list(todo_thread: Arc<TodoThread>, vert: &mut LinearLayout) {
+	let assignments = {
+		let week = todo_thread.get_week_assignments(Local::now().date_naive()).unwrap();
+		let mut flat_assignments = vec![];
+		for (_class, assignments) in week {
+			for assign in assignments {
+				flat_assignments.push(assign);
+			}
+		}
+
+		flat_assignments.sort();
+
+		flat_assignments
+	};
+
+	vert.clear();
+	for assign in assignments {
+		let trunc_name: String = assign.name.chars().into_iter().take(24).collect();
+		let assign_info  = format!("{:<24} {}\n", trunc_name, assign.due_date.format("Due %B %e, %l:%M %p"));
+		let uid = assign.uid;
+		let check = Checkbox::new().on_change(move |s, checked| {
+				let todo_thread = s.user_data::<Arc<TodoThread>>().unwrap().clone();
+				todo_thread.set_assignment_completion(uid, checked).unwrap();
+			}).with_checked(todo_thread.check_assignment_completion(uid).unwrap());
+		vert.add_child(LinearLayout::horizontal()
+			.child(TextView::new(assign_info))
+			.child(DummyView)
+			.child(check));
+	}
 					/*.map(|assign| {
 						let trunc_name = assign.name.chars().into_iter().take(24).collect::<String>();
 						String::from(format!("{:<24} {}\n", trunc_name, assign.due_date.format("Due %B %e, %l:%M %p")))
 					})
 					.fold(String::new(), |prev, s| prev + &s)*/
-	let week = todo_thread.get_week_assignments(Local::now().date_naive()).unwrap();
-	let mut flat_assignments = vec![];
-	for (_class, assignments) in week {
-		for assign in assignments {
-			flat_assignments.push(assign);
-		}
-	}
-
-	flat_assignments.sort();
-
-	Some(flat_assignments.iter()
-		.map(|assign| {
-			let trunc_name = assign.name.chars().into_iter().take(24).collect::<String>();
-			String::from(format!("{:<24} {}\n", trunc_name, assign.due_date.format("Due %B %e, %l:%M %p")))
-		}).fold(String::new(), |prev, s| prev + &s))
 }
 
 fn get_assign_text(todo_thread: Arc<TodoThread>, classname: String) -> String {
@@ -192,6 +209,8 @@ fn add_assignment(s: &mut Cursive, classname: Arc<String>) {
 				todo_thread.new_assignment(classname.to_string(), Assignment {
 						due_date,
 						name: (*name).clone(),
+						completed: false,
+						uid: todo_thread.get_new_assign_id().unwrap(),
 					}).unwrap()
 			}
 			else {
@@ -209,13 +228,9 @@ fn add_assignment(s: &mut Cursive, classname: Arc<String>) {
 
 			s.pop_layer();
 
-			let (todo_text, assign_text) = {
-				let todo_list = get_todo_text(todo_thread.clone()).unwrap();
-				let assign_text = get_assign_text(todo_thread, (*classname).clone());
-				(todo_list, assign_text)
-			};
-			s.call_on_name("todolist", move |list: &mut TextView| {
-				list.set_content(todo_text);
+			let assign_text = get_assign_text(todo_thread.clone(), (*classname).clone());
+			s.call_on_name("weektodo", move |list: &mut LinearLayout| {
+				make_todo_list(todo_thread, list);
 			});
 			s.call_on_name("assigns", move |list: &mut TextView| {
 				list.set_content(assign_text);

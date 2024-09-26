@@ -10,6 +10,7 @@ use crate::assignment::Assignment;
 pub struct TodoList {
 	// class name to assignments
 	pub assignments_by_class: HashMap<String, Vec<Assignment>>,
+	next_uid: u64,
 	assign_dir: PathBuf,
 }
 
@@ -22,6 +23,7 @@ impl TodoList {
 		}
 
 		let mut assignments_by_class = HashMap::new();
+		let mut next_uid = 0;
 
 		// each subdir within the main dir represents a subject (name)
 		// each sub-subdir represents an todo-item (name is assignment name)
@@ -46,6 +48,7 @@ impl TodoList {
 						let name = e.file_name().as_os_str().to_str().unwrap().to_string();
 						let mut date = None;
 						let mut time = None;
+						let mut completed = false;
 						//let mut complete = None;
 
 						fs::read_dir(e.path())
@@ -58,11 +61,14 @@ impl TodoList {
 									"date" => {
 										let file_data = TodoList::read_file_sans_newline(path);
 										date = NaiveDate::parse_from_str(&file_data, "%Y-%m-%d").ok();
-									}
+									},
 									"time" => {
 										let file_data = TodoList::read_file_sans_newline(path);
 										time = NaiveTime::parse_from_str(&file_data, "%H:%M").ok();
-									}
+									},
+									"complete" => {
+										completed = true;
+									},
 									_ => (),
 								};
 							});
@@ -71,9 +77,13 @@ impl TodoList {
 							let due_date = NaiveDateTime::new(good_date, good_time)
 								.and_local_timezone(Local)
 								.unwrap();
+
+							next_uid += 1;
 							assignments.push(Assignment {
 								due_date,
 								name,
+								completed,
+								uid: next_uid - 1,
 							});
 						}
 					});
@@ -82,7 +92,14 @@ impl TodoList {
 		Ok(Self {
 			assignments_by_class,
 			assign_dir: PathBuf::from(load_dir.as_ref()),
+			next_uid,
 		})
+	}
+
+	pub fn get_new_assign_id(&mut self) -> u64 {
+		let uid = self.next_uid;
+		self.next_uid += 1;
+		uid
 	}
 
 	pub fn save_to_file(&self) {
@@ -105,6 +122,9 @@ impl TodoList {
 
 				TodoList::write_str_to_file(assign_path.join("date"), assign.due_date.date_naive().format("%Y-%m-%d").to_string());
 				TodoList::write_str_to_file(assign_path.join("time"), assign.due_date.time().format("%H:%M").to_string());
+				if assign.completed {
+					TodoList::write_str_to_file(assign_path.join("complete"), String::new());
+				}
 			}
 		}
 		eprintln!("Finish writing todolist...");
@@ -145,17 +165,19 @@ impl Drop for TodoList {
 
 impl Clone for TodoList {
 	fn clone(&self) -> Self {
-		return Self {
+		Self {
 			assignments_by_class: self.assignments_by_class.clone(),
 			assign_dir: self.assign_dir.clone(),
-		};
+			next_uid: self.next_uid,
+		}
 	}
 }
 
 impl PartialEq for TodoList {
 	fn eq(&self, other: &Self) -> bool {
-		return self.assignments_by_class == other.assignments_by_class &&
-			self.assign_dir == other.assign_dir;
+		self.assignments_by_class == other.assignments_by_class &&
+			self.assign_dir == other.assign_dir &&
+			self.next_uid == other.next_uid
 	}
 }
 

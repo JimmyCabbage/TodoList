@@ -4,6 +4,8 @@ use std::cmp::Ordering;
 pub struct Assignment {
 	pub due_date: DateTime<Local>,
 	pub name: String,
+	pub completed: bool,
+	pub uid: u64,
 }
 	/*fn load_from_file<P>(path: P) -> Vec<Assignment>
 		where P: AsRef<Path>
@@ -50,6 +52,8 @@ impl Clone for Assignment {
 		Self {
 			due_date: self.due_date.clone(),
 			name: self.name.clone(),
+			completed: self.completed,
+			uid: self.uid,
 		}
 	}
 }
@@ -57,7 +61,9 @@ impl Clone for Assignment {
 impl PartialEq for Assignment {
 	fn eq(&self, other: &Self) -> bool {
 		self.due_date == other.due_date &&
-			self.name == other.name
+			self.name == other.name &&
+			self.completed == other.completed &&
+			self.uid == other.uid
 	}
 }
 

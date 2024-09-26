@@ -11,19 +11,25 @@ enum MainMessage {
 	Quit,
 	NewAssignment(String, Assignment),
 	NewClass(String),
+	GetNewAssignmentId(),
 	GetClassAssignments(String),
 	GetWeekAssignments(NaiveDate),
 	GetClasses,
 	CheckClassExists(String),
+	CompleteAssignment(u64),
+	UncompleteAssignment(u64),
+	CheckAssignmentComplete(u64),
 }
 
 enum TodoMessage {
 	NewAssignmentResponse(bool),
 	NewClassResponse(bool),
+	SendNewAssignmentId(u64),
 	SendClassAssignments(Vec<Assignment>),
 	SendWeekAssignments(HashMap<String, Vec<Assignment>>),
 	SendClasses(Vec<String>),
 	ClassExists(bool),
+	AssignmentComplete(bool),
 }
 
 struct TodoThreadInternal {
@@ -74,6 +80,9 @@ impl TodoThreadInternal {
 
 					self.todo_send.send(TodoMessage::NewAssignmentResponse(ret))
 				},
+				MainMessage::GetNewAssignmentId() => {
+					self.todo_send.send(TodoMessage::SendNewAssignmentId(self.list.get_new_assign_id()))
+				},
 				MainMessage::GetClasses => {
 					let mut classes = self.list.assignments_by_class.clone().into_keys().collect::<Vec<String>>();
 					classes.sort();
@@ -92,7 +101,9 @@ impl TodoThreadInternal {
 								.iter()
 								.filter(|assign| {
 									let offset = (assign.due_date.date_naive() - from_date).num_seconds();
-									offset >= 0 && offset < 60 * 60 * 24 * 7
+									//offset >= 0 && offset < 60 * 60 * 24 * 7
+									// also include 2 day old assignments
+									offset >= -(60 * 60 * 24 * 2) && offset < 60 * 60 * 24 * 7
 								})
 								.map(|assign| assign.clone())
 								.collect())
@@ -103,6 +114,43 @@ impl TodoThreadInternal {
 				},
 				MainMessage::CheckClassExists(class) => {
 					self.todo_send.send(TodoMessage::ClassExists(self.list.assignments_by_class.contains_key(&class)))
+				},
+				MainMessage::CompleteAssignment(uid) => {
+					self.list.assignments_by_class.values_mut()
+						.for_each(|assigns| {
+							for a in assigns {
+								if a.uid == uid {
+									a.completed = true;
+								}
+							}
+						});
+
+					Ok(())
+				},
+				MainMessage::UncompleteAssignment(uid) => {
+					self.list.assignments_by_class.values_mut()
+						.for_each(|assigns| {
+							for a in assigns {
+								if a.uid == uid {
+									a.completed = false;
+								}
+							}
+						});
+
+					Ok(())
+				},
+				MainMessage::CheckAssignmentComplete(uid) => {
+					let mut complete = false;
+					self.list.assignments_by_class.values_mut()
+						.for_each(|assigns| {
+							for a in assigns {
+								if a.uid == uid {
+									complete = a.completed;
+									break;
+								}
+							}
+						});
+					self.todo_send.send(TodoMessage::AssignmentComplete(complete))
 				},
 			};
 
@@ -176,6 +224,16 @@ impl TodoThread {
 		}
 	}
 
+	pub fn get_new_assign_id(&self) -> Result<u64, ()> {
+		self.main_send.send(MainMessage::GetNewAssignmentId()).unwrap();
+		if let TodoMessage::SendNewAssignmentId(b) = self.todo_recv.recv().unwrap() {
+			Ok(b)
+		}
+		else {
+			Err(())
+		}
+	}
+
 	pub fn get_class_assignments(&self, classname: String) -> Result<Vec<Assignment>, ()> {
 		self.main_send.send(MainMessage::GetClassAssignments(classname)).unwrap();
 		if let TodoMessage::SendClassAssignments(a) = self.todo_recv.recv().unwrap() {
@@ -209,6 +267,27 @@ impl TodoThread {
 	pub fn check_class_exists(&self, classname: String) -> Result<bool, ()> {
 		self.main_send.send(MainMessage::CheckClassExists(classname)).unwrap();
 		if let TodoMessage::ClassExists(a) = self.todo_recv.recv().unwrap() {
+			Ok(a)
+		}
+		else {
+			Err(())
+		}
+	}
+
+	pub fn set_assignment_completion(&self, uid: u64, completed: bool) -> Result<(), ()> {
+		if completed {
+			self.main_send.send(MainMessage::CompleteAssignment(uid)).unwrap();
+		}
+		else {
+			self.main_send.send(MainMessage::UncompleteAssignment(uid)).unwrap();
+		}
+
+		Ok(())
+	}
+
+	pub fn check_assignment_completion(&self, uid: u64) -> Result<bool, ()> {
+		self.main_send.send(MainMessage::CheckAssignmentComplete(uid)).unwrap();
+		if let TodoMessage::AssignmentComplete(a) = self.todo_recv.recv().unwrap() {
 			Ok(a)
 		}
 		else {
