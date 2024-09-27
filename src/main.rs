@@ -4,7 +4,7 @@ use std::sync::mpsc::{self, Sender, Receiver};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::vec::Vec;
-use chrono::{prelude::*, NaiveDateTime, NaiveDate, NaiveTime};
+use chrono::{prelude::*, NaiveDateTime, NaiveDate, NaiveTime, Days};
 use cursive::Cursive;
 use cursive::views::{Button, Dialog, DummyView, EditView, TextView, LinearLayout, SelectView, Menubar, ScrollView, Panel, Checkbox, NamedView, ListView};
 use cursive::traits::*;
@@ -69,33 +69,68 @@ fn main() {
 }
 
 fn make_todo_list(todo_thread: Arc<TodoThread>, vert: &mut LinearLayout) {
-	let assignments = {
-		let week = todo_thread.get_week_assignments(Local::now().date_naive()).unwrap();
-		let mut flat_assignments = vec![];
-		for (_class, assignments) in week {
-			for assign in assignments {
-				flat_assignments.push(assign);
+	let assignments_by_date = {
+		let all_week_assignments = todo_thread.get_week_assignments(Local::now().date_naive()).unwrap();
+
+		let mut date_assign = HashMap::new();
+		let now = Local::now().date_naive();
+		for i in -3i64..=7 {
+			let date = if i > 0 {
+				now.checked_add_days(Days::new(i as u64)).unwrap()
+			}
+			else if i < 0 {
+				now.checked_sub_days(Days::new(-i as u64)).unwrap()
+			}
+			else {
+				now
+			};
+
+			let mut date_assigns = vec![];
+			for (class, assignments) in &all_week_assignments {
+				for assign in assignments {
+					if assign.due_date.date_naive() == date {
+						date_assigns.push((class.clone(), assign.clone()));
+					}
+				}
+			}
+
+			if !date_assigns.is_empty() {
+				date_assign.insert(date.clone(), date_assigns);
 			}
 		}
 
-		flat_assignments.sort();
-
-		flat_assignments
+		date_assign
 	};
 
 	vert.clear();
-	for assign in assignments {
-		let trunc_name: String = assign.name.chars().into_iter().take(24).collect();
-		let assign_info  = format!("{:<24} {}\n", trunc_name, assign.due_date.format("Due %B %e, %l:%M %p"));
-		let uid = assign.uid;
-		let check = Checkbox::new().on_change(move |s, checked| {
-				let todo_thread = s.user_data::<Arc<TodoThread>>().unwrap().clone();
-				todo_thread.set_assignment_completion(uid, checked).unwrap();
-			}).with_checked(todo_thread.check_assignment_completion(uid).unwrap());
-		vert.add_child(LinearLayout::horizontal()
-			.child(TextView::new(assign_info))
-			.child(DummyView)
-			.child(check));
+	let mut dates = assignments_by_date.keys().collect::<Vec<&NaiveDate>>();
+	dates.sort();
+	for date in dates {
+		let assignments = {
+			let mut assignments = assignments_by_date.get(date).unwrap().clone();
+			assignments.sort();
+			assignments
+		};
+		vert.add_child(TextView::new(date.format("Due %B %e").to_string()));
+
+		let time_format_str = "%l:%M %p";
+		let max_assign_name_len = 32;
+		vert.add_child(TextView::new("─".repeat(4) + "┬" + &"─".repeat(time_format_str.len() + 2) + "┬" + &"─".repeat(max_assign_name_len + 1)));
+		for (class, assign) in assignments {
+			let due_date = assign.due_date.format(time_format_str).to_string();
+			let uid = assign.uid;
+			let check = Checkbox::new().on_change(move |s, checked| {
+					let todo_thread = s.user_data::<Arc<TodoThread>>().unwrap().clone();
+					todo_thread.set_assignment_completion(uid, checked).unwrap();
+				}).with_checked(todo_thread.check_assignment_completion(uid).unwrap());
+			vert.add_child(LinearLayout::horizontal()
+				.child(check)
+				.child(TextView::new(" │ "))
+				.child(TextView::new(due_date))
+				.child(TextView::new(" │ "))
+				.child(ScrollView::new(TextView::new(assign.name.clone())).max_width(max_assign_name_len)));
+		}
+		vert.add_child(DummyView);
 	}
 					/*.map(|assign| {
 						let trunc_name = assign.name.chars().into_iter().take(24).collect::<String>();
