@@ -3,7 +3,9 @@ use std::thread;
 use std::sync::mpsc::{self, Sender, Receiver};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::cell::RefCell;
 use std::vec::Vec;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use chrono::{prelude::*, NaiveDateTime, NaiveDate, NaiveTime, Days};
 use cursive::Cursive;
 use cursive::views::{Button, Dialog, DummyView, EditView, TextView, LinearLayout, SelectView, Menubar, ScrollView, Panel, Checkbox, NamedView, ListView};
@@ -11,22 +13,20 @@ use cursive::traits::*;
 
 mod assignment;
 mod todolist;
-mod todothread;
 
 use assignment::Assignment;
 use todolist::TodoList;
-use todothread::TodoThread;
 
 fn main() {
 	let listpath = env::var("HOME").unwrap() + "/.todolist";
-	let todo_thread = Arc::new(TodoThread::new(listpath));
+	let todolist = RefCell::new(TodoList::new(listpath).unwrap());
 
 	let mut siv = cursive::default();
-	siv.set_user_data(todo_thread.clone());
+	siv.set_user_data(todolist.clone());
 
 	let classes_view = {
 		let mut classes_view = SelectView::<String>::new();
-		classes_view.add_all_str(todo_thread.get_classes().unwrap());
+		classes_view.add_all_str(todolist.borrow().get_classes());
 
 		let classes_view = classes_view.on_submit(|s, name: &str| {
 				select_class(s, Arc::new(name.to_string()))
@@ -43,7 +43,7 @@ fn main() {
 
 	let week_todo = {
 		let mut vert = LinearLayout::vertical().with_name("weektodo");
-		make_todo_list(todo_thread.clone(), &mut (*vert.get_mut()));
+		make_todo_list(&todolist.borrow(), &mut (*vert.get_mut()));
 		let vert = ScrollView::new(vert);
 		Dialog::around(vert)
 			.title("TODO This Week")
@@ -68,12 +68,16 @@ fn main() {
 	siv.run();
 }
 
-fn make_todo_list(todo_thread: Arc<TodoThread>, vert: &mut LinearLayout) {
+fn make_todo_list(todolist: &TodoList, vert: &mut LinearLayout) {
 	let assignments_by_date = {
-		let all_week_assignments = todo_thread.get_week_assignments(Local::now().date_naive()).unwrap();
+		let now = Local::now().date_naive();
+		let all_week_assignments = {
+			let begin = now.checked_sub_days(Days::new(3)).unwrap();
+			let end = now.checked_add_days(Days::new(7)).unwrap();
+			todolist.get_timespan_assignments(begin, end)
+		};
 
 		let mut date_assign = HashMap::new();
-		let now = Local::now().date_naive();
 		for i in -3i64..=7 {
 			let date = if i > 0 {
 				now.checked_add_days(Days::new(i as u64)).unwrap()
@@ -118,13 +122,18 @@ fn make_todo_list(todo_thread: Arc<TodoThread>, vert: &mut LinearLayout) {
 		let time_format_str = "%l:%M %p";
 		let max_assign_name_len = 32;
 		vert.add_child(TextView::new("─".repeat(4) + "┬" + &"─".repeat(time_format_str.len() + 2) + "┬" + &"─".repeat(max_assign_name_len + 1)));
-		for (class, assign) in assignments {
+		for (_class, assign) in assignments {
 			let due_date = assign.due_date.format(time_format_str).to_string();
-			let uid = assign.uid;
-			let check = Checkbox::new().on_change(move |s, checked| {
-					let todo_thread = s.user_data::<Arc<TodoThread>>().unwrap().clone();
-					todo_thread.set_assignment_completion(uid, checked).unwrap();
-				}).with_checked(todo_thread.check_assignment_completion(uid).unwrap());
+			let uid = {
+				let mut h = DefaultHasher::new();
+				assign.hash(&mut h);
+				h.finish()
+			};
+			let check = Checkbox::new().with_checked(todolist.get_assignment_completion(uid).unwrap())
+				.on_change(move |s, checked| {
+					let mut todolist = s.user_data::<RefCell<TodoList>>().unwrap().borrow_mut();
+					todolist.set_assignment_completion(uid, checked).unwrap();
+				});
 			vert.add_child(LinearLayout::horizontal()
 				.child(check)
 				.child(TextView::new(" │ "))
@@ -141,8 +150,8 @@ fn make_todo_list(todo_thread: Arc<TodoThread>, vert: &mut LinearLayout) {
 					.fold(String::new(), |prev, s| prev + &s)*/
 }
 
-fn get_assign_text(todo_thread: Arc<TodoThread>, classname: String) -> String {
-	let assignments = todo_thread.get_class_assignments(classname).unwrap();
+fn get_assign_text(todolist: &TodoList, classname: String) -> String {
+	let assignments = todolist.get_class_assignments(&classname).unwrap();
 	let now = Local::now().date_naive();
 
 	assignments.iter()
@@ -164,9 +173,10 @@ fn get_assign_text(todo_thread: Arc<TodoThread>, classname: String) -> String {
 }
 
 fn select_class(s: &mut Cursive, name: Arc<String>) {
-	let todo_thread = s.user_data::<Arc<TodoThread>>().unwrap().clone();
-
-	let list = get_assign_text(todo_thread, (*name).clone());
+	let list = {
+		let todolist = s.user_data::<RefCell<TodoList>>().unwrap().borrow();
+		get_assign_text(&todolist, (*name).clone())
+	};
 	let text_view = TextView::new(list)
 		.with_name("assigns");
 	s.add_layer(Dialog::around(ScrollView::new(text_view))
@@ -180,16 +190,19 @@ fn select_class(s: &mut Cursive, name: Arc<String>) {
 
 fn add_classname(s: &mut Cursive) {
 	fn ok(s: &mut Cursive, name: &str) {
-		let todo_thread = s.user_data::<Arc<TodoThread>>().unwrap().clone();
-		if todo_thread.check_class_exists(name.to_string()).unwrap() {
-			s.pop_layer();
-			return;
-		}
+		let res = {
+			let mut todolist = s.user_data::<RefCell<TodoList>>().unwrap().borrow_mut();
+			todolist.new_class(name.to_string())
+		};
 
-		s.call_on_name("select", |view: &mut SelectView<String>| {
-			view.add_item_str(name);
-		});
-		todo_thread.new_class(name.to_string()).unwrap();
+		match res {
+			Ok(_) => {
+				s.call_on_name("select", |view: &mut SelectView<String>| {
+					view.add_item_str(name);
+				});
+			},
+			Err(_) => (),
+		}
 		s.pop_layer();
 	}
 
@@ -235,39 +248,45 @@ fn add_assignment(s: &mut Cursive, classname: Arc<String>) {
 				view.get_content()
 			}).unwrap();
 
-			let todo_thread = s.user_data::<Arc<TodoThread>>().unwrap().clone();
+			let todolist_ref = s.user_data::<RefCell<TodoList>>().unwrap().clone();
+			let assign_text = {
+				let mut todolist = todolist_ref.borrow_mut();
 
-			let date = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d").ok();
-			let time = NaiveTime::parse_from_str(&time_str, "%H:%M").ok();
-			let res = if let (Some(good_date), Some(good_time)) = (date, time) {
-				let due_date = NaiveDateTime::new(good_date, good_time)
-					.and_local_timezone(Local)
-					.unwrap();
-				todo_thread.new_assignment(classname.to_string(), Assignment {
-						due_date,
-						name: (*name).clone(),
-						completed: false,
-						uid: todo_thread.get_new_assign_id().unwrap(),
-					}).unwrap()
-			}
-			else {
-				let dialog = Dialog::around(TextView::new("Formating error with date/time")).button("Ok", Cursive::noop);
-				s.add_layer(dialog);
+				let date = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d").ok();
+				let time = NaiveTime::parse_from_str(&time_str, "%H:%M").ok();
+				let uid_opt = if let (Some(good_date), Some(good_time)) = (date, time) {
+					let due_date = NaiveDateTime::new(good_date, good_time)
+						.and_local_timezone(Local)
+						.unwrap();
+					Some(todolist.new_assignment(classname.to_string(), Assignment {
+							due_date,
+							name: (*name).clone(),
+							completed: false,
+						}).unwrap())
+				}
+				else {
+					let dialog = Dialog::around(TextView::new("Formating error with date/time")).button("Ok", Cursive::noop);
+					s.add_layer(dialog);
+					s.pop_layer();
+					None
+				};
+
+				match uid_opt {
+					Some(_) => (),
+					None => {
+						let dialog = Dialog::around(TextView::new("Failed to add new assignment successfully")).button("Ok", Cursive::noop);
+						s.add_layer(dialog);
+						s.pop_layer();
+					}
+				}
+
 				s.pop_layer();
-				false
+				get_assign_text(&todolist, (*classname).clone())
 			};
 
-			if !res {
-				let dialog = Dialog::around(TextView::new("Failed to add new assignment successfully")).button("Ok", Cursive::noop);
-				s.add_layer(dialog);
-				s.pop_layer();
-			}
-
-			s.pop_layer();
-
-			let assign_text = get_assign_text(todo_thread.clone(), (*classname).clone());
 			s.call_on_name("weektodo", move |list: &mut LinearLayout| {
-				make_todo_list(todo_thread, list);
+				let todolist = todolist_ref.borrow();
+				make_todo_list(&todolist, list);
 			});
 			s.call_on_name("assigns", move |list: &mut TextView| {
 				list.set_content(assign_text);

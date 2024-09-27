@@ -1,11 +1,12 @@
 use chrono::{prelude::*, DateTime};
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::cmp::Ordering;
 
+#[derive(Hash)]
 pub struct Assignment {
 	pub due_date: DateTime<Local>,
 	pub name: String,
 	pub completed: bool,
-	pub uid: u64,
 }
 	/*fn load_from_file<P>(path: P) -> Vec<Assignment>
 		where P: AsRef<Path>
@@ -53,7 +54,6 @@ impl Clone for Assignment {
 			due_date: self.due_date.clone(),
 			name: self.name.clone(),
 			completed: self.completed,
-			uid: self.uid,
 		}
 	}
 }
@@ -62,8 +62,7 @@ impl PartialEq for Assignment {
 	fn eq(&self, other: &Self) -> bool {
 		self.due_date == other.due_date &&
 			self.name == other.name &&
-			self.completed == other.completed &&
-			self.uid == other.uid
+			self.completed == other.completed
 	}
 }
 
