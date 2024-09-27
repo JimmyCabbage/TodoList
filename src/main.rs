@@ -143,14 +143,14 @@ fn make_todo_list(todo_thread: Arc<TodoThread>, vert: &mut LinearLayout) {
 
 fn get_assign_text(todo_thread: Arc<TodoThread>, classname: String) -> String {
 	let assignments = todo_thread.get_class_assignments(classname).unwrap();
-	let now = Local::now();
+	let now = Local::now().date_naive();
 
 	assignments.iter()
 		.filter_map(|assign| {
-			let offset = (assign.due_date - now).num_seconds();
+			let offset = (assign.due_date.date_naive() - now).num_seconds();
 
 			// only write if the deadline hasn't passed, or if it's not more than a week away from today
-			if offset >= 0 && offset < 60 * 60 * 24 * 7 {
+			if offset >= -(60 * 60 * 24 * 3) && offset < 60 * 60 * 24 * 7 {
 				Some(format!("{:<32} {}\n",
 						assign.name,
 						assign.due_date.format("Due %B %e, %l:%M %p"))
