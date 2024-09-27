@@ -108,7 +108,9 @@ fn make_todo_list(todo_thread: Arc<TodoThread>, vert: &mut LinearLayout) {
 	for date in dates {
 		let assignments = {
 			let mut assignments = assignments_by_date.get(date).unwrap().clone();
-			assignments.sort();
+			assignments.sort_by(|(_, a), (_, b)| {
+				a.due_date.cmp(&b.due_date)
+			});
 			assignments
 		};
 		vert.add_child(TextView::new(date.format("Due %B %e").to_string()));
