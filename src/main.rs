@@ -19,14 +19,14 @@ use todolist::TodoList;
 
 fn main() {
 	let listpath = env::var("HOME").unwrap() + "/.todolist";
-	let todolist = RefCell::new(TodoList::new(listpath).unwrap());
+	let todolist = Arc::new(RefCell::new(TodoList::new(listpath).unwrap()));
 
 	let mut siv = cursive::default();
 	siv.set_user_data(todolist.clone());
 
 	let classes_view = {
 		let mut classes_view = SelectView::<String>::new();
-		classes_view.add_all_str(todolist.borrow().get_classes());
+		make_class_view(&todolist.borrow(), &mut classes_view);
 
 		let classes_view = classes_view.on_submit(|s, name: &str| {
 				select_class(s, Arc::new(name.to_string()))
@@ -58,14 +58,19 @@ fn main() {
 		.child(Button::new("Quit", Cursive::quit));
 
 	siv.add_layer(Dialog::around(LinearLayout::vertical()
-			.child(info_view)
-			.child(DummyView)
-			.child(buttons)));
+		.child(info_view)
+		.child(DummyView)
+		.child(buttons)));
 
 	//let main_menu = Menubar::new()
 		//.insert(
 
 	siv.run();
+}
+
+fn make_class_view(todolist: &TodoList, classes_view: &mut SelectView<String>) {
+	classes_view.clear();
+	classes_view.add_all_str(todolist.get_classes());
 }
 
 fn make_todo_list(todolist: &TodoList, vert: &mut LinearLayout) {
@@ -131,7 +136,7 @@ fn make_todo_list(todolist: &TodoList, vert: &mut LinearLayout) {
 			};
 			let check = Checkbox::new().with_checked(todolist.get_assignment_completion(uid).unwrap())
 				.on_change(move |s, checked| {
-					let mut todolist = s.user_data::<RefCell<TodoList>>().unwrap().borrow_mut();
+					let mut todolist = s.user_data::<Arc<RefCell<TodoList>>>().unwrap().borrow_mut();
 					todolist.set_assignment_completion(uid, checked).unwrap();
 				});
 			vert.add_child(LinearLayout::horizontal()
@@ -174,15 +179,46 @@ fn get_assign_text(todolist: &TodoList, classname: String) -> String {
 
 fn select_class(s: &mut Cursive, name: Arc<String>) {
 	let list = {
-		let todolist = s.user_data::<RefCell<TodoList>>().unwrap().borrow();
+		let todolist = s.user_data::<Arc<RefCell<TodoList>>>().unwrap().borrow();
 		get_assign_text(&todolist, (*name).clone())
 	};
 	let text_view = TextView::new(list)
 		.with_name("assigns");
-	s.add_layer(Dialog::around(ScrollView::new(text_view))
-		.button("Add new assignment", move |s| {
+
+	let add = {
+		let name = name.clone();
+		move |s: &mut Cursive| {
 			add_assignment(s, name.clone());
-		})
+		}
+	};
+	let rm = {
+		let name = name.clone();
+		move |s: &mut Cursive| {
+			let name = name.clone();
+			s.add_layer(Dialog::around(TextView::new(format!("Are you sure you want to delete class \"{}\"", name.clone())))
+				.button("Cancel", |s| {
+					s.pop_layer();
+				})
+				.button("Delete", move |s| {
+					{
+						let todolist_ref = s.user_data::<Arc<RefCell<TodoList>>>().unwrap().clone();
+						{
+							let mut todolist = todolist_ref.borrow_mut();
+							todolist.delete_class((*name).clone()).unwrap();
+						}
+
+						s.call_on_name("select", |view: &mut SelectView<String>| {
+							make_class_view(&todolist_ref.borrow(), view);
+						});
+						s.pop_layer();
+					}
+					s.pop_layer();
+				}));
+		}
+	};
+	s.add_layer(Dialog::around(ScrollView::new(text_view))
+		.button("Add new assignment", add)
+		.button("Delete this class", rm)
 		.button("OK", |s| {
 			s.pop_layer();
 		}));
@@ -191,8 +227,8 @@ fn select_class(s: &mut Cursive, name: Arc<String>) {
 fn add_classname(s: &mut Cursive) {
 	fn ok(s: &mut Cursive, name: &str) {
 		let res = {
-			let mut todolist = s.user_data::<RefCell<TodoList>>().unwrap().borrow_mut();
-			todolist.new_class(name.to_string())
+			let mut todolist = s.user_data::<Arc<RefCell<TodoList>>>().unwrap().borrow_mut();
+			todolist.create_class(name.to_string())
 		};
 
 		match res {
@@ -248,7 +284,7 @@ fn add_assignment(s: &mut Cursive, classname: Arc<String>) {
 				view.get_content()
 			}).unwrap();
 
-			let todolist_ref = s.user_data::<RefCell<TodoList>>().unwrap().clone();
+			let todolist_ref = s.user_data::<Arc<RefCell<TodoList>>>().unwrap().clone();
 			let assign_text = {
 				let mut todolist = todolist_ref.borrow_mut();
 
@@ -258,29 +294,33 @@ fn add_assignment(s: &mut Cursive, classname: Arc<String>) {
 					let due_date = NaiveDateTime::new(good_date, good_time)
 						.and_local_timezone(Local)
 						.unwrap();
-					Some(todolist.new_assignment(classname.to_string(), Assignment {
+					Some(todolist.create_assignment(classname.to_string(), Assignment {
 							due_date,
 							name: (*name).clone(),
 							completed: false,
 						}).unwrap())
 				}
 				else {
-					let dialog = Dialog::around(TextView::new("Formating error with date/time")).button("Ok", Cursive::noop);
+					let dialog = Dialog::around(TextView::new("Formating error with date/time")).button("Ok", |s| {
+						s.pop_layer();
+					});
 					s.add_layer(dialog);
-					s.pop_layer();
 					None
 				};
 
 				match uid_opt {
-					Some(_) => (),
+					Some(_) => {
+						s.pop_layer();
+					}
 					None => {
-						let dialog = Dialog::around(TextView::new("Failed to add new assignment successfully")).button("Ok", Cursive::noop);
+						let dialog = Dialog::around(TextView::new("Failed to add new assignment")).button("Ok", |s| {
+							s.pop_layer();
+						});
 						s.add_layer(dialog);
 						s.pop_layer();
 					}
 				}
 
-				s.pop_layer();
 				get_assign_text(&todolist, (*classname).clone())
 			};
 

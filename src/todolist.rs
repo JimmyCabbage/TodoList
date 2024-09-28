@@ -103,7 +103,7 @@ impl TodoList {
 		})
 	}
 
-	pub fn new_class(&mut self, classname: String) -> Result<(), ()> {
+	pub fn create_class(&mut self, classname: String) -> Result<(), ()> {
 		if !self.uids_by_class.contains_key(&classname) {
 			self.uids_by_class.insert(classname, vec![]);
 			Ok(())
@@ -113,7 +113,30 @@ impl TodoList {
 		}
 	}
 
-	pub fn new_assignment(&mut self, classname: String, assignment: Assignment) -> Result<u64, ()> {
+	pub fn delete_class(&mut self, classname: String) -> Result<(), ()> {
+		if self.uids_by_class.contains_key(&classname) {
+			let uids = self.uids_by_class.get(&classname).unwrap();
+
+			// check if other classes have this assign, else remove
+			for uid in uids {
+				let remaining = self.uids_by_class.get(&classname).unwrap()
+					.iter()
+					.find(|u| *u == uid)
+					.is_some();
+				if !remaining {
+					self.assignment_by_uid.remove(uid);
+				}
+			}
+
+			self.uids_by_class.remove(&classname);
+			Ok(())
+		}
+		else {
+			Err(())
+		}
+	}
+
+	pub fn create_assignment(&mut self, classname: String, assignment: Assignment) -> Result<u64, ()> {
 		match self.uids_by_class.get_mut(&classname) {
 			Some(class) => {
 				let uid = {
@@ -197,6 +220,21 @@ impl TodoList {
 		eprintln!("Saving todolist to file...");
 		if !self.assign_dir.try_exists().unwrap() {
 			fs::create_dir(self.assign_dir.as_path()).unwrap();
+		}
+
+		for entry in fs::read_dir(&self.assign_dir.as_path()).unwrap() {
+			match entry {
+				Ok(entry) => {
+					let file_type = entry.file_type().unwrap();
+					if file_type.is_dir() {
+						std::fs::remove_dir_all(entry.path().as_path()).unwrap();
+					}
+					else if file_type.is_file() {
+						std::fs::remove_file(entry.path().as_path()).unwrap();
+					}
+				},
+				Err(_) => (),
+			}
 		}
 
 		for (class, uids) in &self.uids_by_class {
