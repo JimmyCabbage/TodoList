@@ -1,5 +1,5 @@
 use std::vec::Vec;
-use std::collections::HashMap;
+use std::collections::{HashMap,BTreeMap};
 use std::path::{Path, PathBuf};
 use std::fs::{self, File};
 use std::io::{prelude::*, BufReader, BufWriter};
@@ -21,7 +21,7 @@ impl TodoList {
 	{
 		if load_path.as_ref().exists() && load_path.as_ref().is_file() {
 			let list_str = TodoList::read_file_sans_newline(&load_path);
-			let assignments_by_class = serde_json::from_str::<HashMap<String, Vec<Assignment>>>(&list_str).unwrap();
+			let assignments_by_class = serde_json::from_str::<BTreeMap<String, Vec<Assignment>>>(&list_str).unwrap();
 
 			let mut uids_by_class = HashMap::new();
 			let mut assignment_by_uid = HashMap::new();
@@ -170,7 +170,7 @@ impl TodoList {
 			//fs::remove_dir_all(self.list_dir.as_path()).unwrap();
 		//}
 
-		let mut assignments_by_class = HashMap::<String, Vec<Assignment>>::new();
+		let mut assignments_by_class = BTreeMap::<String, Vec<Assignment>>::new();
 		for (class, uids) in &self.uids_by_class {
 			assignments_by_class.insert(class.clone(), vec![]);
 			for uid in uids {
