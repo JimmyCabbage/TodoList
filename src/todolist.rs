@@ -12,95 +12,41 @@ pub struct TodoList {
 	// class name to assignment ids
 	uids_by_class: HashMap<String, Vec<u64>>,
 	assignment_by_uid: HashMap<u64, Assignment>,
-	assign_dir: PathBuf,
+	list_path: PathBuf,
 }
 
 impl TodoList {
-	pub fn new<P>(load_dir: P) -> Result<Self,&'static str>
+	pub fn new<P>(load_path: P) -> Result<Self,&'static str>
 		where P: AsRef<Path>
 	{
-		if !load_dir.as_ref().is_dir() {
-			return Err("load_dir is not a directory");
+		if load_path.as_ref().exists() && load_path.as_ref().is_file() {
+			let list_str = TodoList::read_file_sans_newline(&load_path);
+			let assignments_by_class = serde_json::from_str::<HashMap<String, Vec<Assignment>>>(&list_str).unwrap();
+
+			let mut uids_by_class = HashMap::new();
+			let mut assignment_by_uid = HashMap::new();
+			for (class, assignments) in assignments_by_class {
+				uids_by_class.insert(class.clone(), vec![]);
+				for assign in assignments {
+					let uid = {
+						let mut h = DefaultHasher::new();
+						assign.hash(&mut h);
+						h.finish()
+					};
+					assignment_by_uid.insert(uid, assign);
+					uids_by_class.get_mut(&class).unwrap().push(uid);
+				}
+			}
+			
+			Ok(Self {
+				uids_by_class,
+				assignment_by_uid,
+				list_path: PathBuf::from(load_path.as_ref()),
+			})
 		}
-
-		let mut uids_by_class = HashMap::new();
-		let mut assignment_by_uid = HashMap::new();
-
-		// each subdir within the main dir represents a subject (name)
-		// each sub-subdir represents an todo-item (name is assignment name)
-		// within sub-subdir, date, time, and completed (optional)
-		fs::read_dir(load_dir.as_ref())
-			.unwrap()
-			.filter_map(|e| e.ok())
-			.filter(|e| e.file_type().unwrap().is_dir())
-			.for_each(|e| {
-				let classname = e.file_name()
-					.to_str()
-					.unwrap()
-					.to_string();
-				uids_by_class.insert(classname.clone(), vec![]);
-				let assignments = uids_by_class.get_mut(&classname).unwrap();
-
-				fs::read_dir(e.path())
-					.unwrap()
-					.filter_map(|e| e.ok())
-					.filter(|e| e.file_type().unwrap().is_dir())
-					.for_each(|e| {
-						let name = e.file_name().as_os_str().to_str().unwrap().to_string();
-						let mut date = None;
-						let mut time = None;
-						let mut completed = false;
-						//let mut complete = None;
-
-						fs::read_dir(e.path())
-							.unwrap()
-							.filter_map(|e| e.ok())
-							.filter(|e| e.file_type().unwrap().is_file())
-							.for_each(|e| {
-								let path = e.path();
-								match e.file_name().to_str().unwrap() {
-									"date" => {
-										let file_data = TodoList::read_file_sans_newline(path);
-										date = NaiveDate::parse_from_str(&file_data, "%Y-%m-%d").ok();
-									},
-									"time" => {
-										let file_data = TodoList::read_file_sans_newline(path);
-										time = NaiveTime::parse_from_str(&file_data, "%H:%M").ok();
-									},
-									"complete" => {
-										completed = true;
-									},
-									_ => (),
-								};
-							});
-
-						if let (Some(good_date), Some(good_time)) = (date, time) {
-							let due_date = NaiveDateTime::new(good_date, good_time)
-								.and_local_timezone(Local)
-								.unwrap();
-
-							let assign = Assignment {
-								due_date,
-								name,
-								completed,
-							};
-							let uid = {
-								let mut h = DefaultHasher::new();
-								assign.hash(&mut h);
-								h.finish()
-							};
-
-							assignments.push(uid);
-							assignment_by_uid.insert(uid, assign);
-						}
-					});
-			});
-		
-		Ok(Self {
-			uids_by_class,
-			assignment_by_uid,
-			assign_dir: PathBuf::from(load_dir.as_ref()),
-		})
+		else {
+			Err("load_path isn't a proper file")
+		}
 	}
 
 	pub fn create_class(&mut self, classname: String) -> Result<(), ()> {
@@ -220,45 +166,23 @@ impl TodoList {
 
 	pub fn save_to_file(&self) {
 		eprintln!("Saving todolist to file...");
-		if !self.assign_dir.try_exists().unwrap() {
-			fs::create_dir(self.assign_dir.as_path()).unwrap();
-		}
+		//if self.list_dir.try_exists().unwrap() {
+			//fs::remove_dir_all(self.list_dir.as_path()).unwrap();
+		//}
 
-		for entry in fs::read_dir(&self.assign_dir.as_path()).unwrap() {
-			match entry {
-				Ok(entry) => {
-					let file_type = entry.file_type().unwrap();
-					if file_type.is_dir() {
-						std::fs::remove_dir_all(entry.path().as_path()).unwrap();
-					}
-					else if file_type.is_file() {
-						std::fs::remove_file(entry.path().as_path()).unwrap();
-					}
-				},
-				Err(_) => (),
-			}
-		}
-
+		let mut assignments_by_class = HashMap::<String, Vec<Assignment>>::new();
 		for (class, uids) in &self.uids_by_class {
-			let class_path = self.assign_dir.join(class);
-			if !class_path.try_exists().unwrap() {
-				fs::create_dir(class_path.as_path()).unwrap();
-			}
-
+			assignments_by_class.insert(class.clone(), vec![]);
 			for uid in uids {
-				let assign = self.assignment_by_uid.get(uid).unwrap();
-				let assign_path = class_path.join(&assign.name);
-				if !assign_path.try_exists().unwrap() {
-					fs::create_dir(assign_path.as_path()).unwrap();
-				}
-
-				TodoList::write_str_to_file(assign_path.join("date"), assign.due_date.date_naive().format("%Y-%m-%d").to_string());
-				TodoList::write_str_to_file(assign_path.join("time"), assign.due_date.time().format("%H:%M").to_string());
-				if assign.completed {
-					TodoList::write_str_to_file(assign_path.join("complete"), String::new());
-				}
+				let assign = self.assignment_by_uid.get(&uid).unwrap();
+				let assignments = assignments_by_class.get_mut(class).unwrap();
+				assignments.push(assign.clone());
 			}
 		}
+
+		let json = serde_json::to_string_pretty(&assignments_by_class).unwrap();
+		eprintln!("{}", &json);
+		TodoList::write_str_to_file(&self.list_path, json);
 		eprintln!("Finish writing todolist...");
 	}
 
@@ -300,7 +224,7 @@ impl Clone for TodoList {
 		Self {
 			uids_by_class: self.uids_by_class.clone(),
 			assignment_by_uid: self.assignment_by_uid.clone(),
-			assign_dir: self.assign_dir.clone(),
+			list_path: self.list_path.clone(),
 		}
 	}
 }
@@ -309,7 +233,7 @@ impl PartialEq for TodoList {
 	fn eq(&self, other: &Self) -> bool {
 		self.uids_by_class == other.uids_by_class &&
 			self.assignment_by_uid == other.assignment_by_uid &&
-			self.assign_dir == other.assign_dir
+			self.list_path == other.list_path
 	}
 }
 

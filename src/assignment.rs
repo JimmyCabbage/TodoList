@@ -1,8 +1,9 @@
 use chrono::{prelude::*, DateTime};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::cmp::Ordering;
+use serde::{Deserialize, Serialize};
 
-#[derive(Hash)]
+#[derive(Hash, Serialize, Deserialize)]
 pub struct Assignment {
 	pub due_date: DateTime<Local>,
 	pub name: String,
