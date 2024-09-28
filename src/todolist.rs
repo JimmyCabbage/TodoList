@@ -159,9 +159,11 @@ impl TodoList {
 	}
 
 	pub fn get_classes(&self) -> Vec<String> {
-		self.uids_by_class.iter()
+		let mut classes: Vec<String> = self.uids_by_class.iter()
 			.map(|(class, _uids)| class.clone())
-			.collect()
+			.collect();
+		classes.sort();
+		classes
 	}
 
 	pub fn get_class_assignments(&self, classname: &String) -> Result<Vec<Assignment>, ()> {

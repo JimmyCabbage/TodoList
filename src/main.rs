@@ -125,9 +125,12 @@ fn make_todo_list(todolist: &TodoList, vert: &mut LinearLayout) {
 		vert.add_child(TextView::new(date.format("Due %B %e").to_string()));
 
 		let time_format_str = "%l:%M %p";
+
+		let classname_len = 8;
 		let max_assign_name_len = 32;
-		vert.add_child(TextView::new("─".repeat(4) + "┬" + &"─".repeat(time_format_str.len() + 2) + "┬" + &"─".repeat(max_assign_name_len + 1)));
-		for (_class, assign) in assignments {
+		let banner = "─".repeat(4) + "┬" + &"─".repeat(time_format_str.len() + 2) + "┬" + &"─".repeat(classname_len + 2) + "┬" + &"─".repeat(max_assign_name_len + 1);
+		vert.add_child(TextView::new(banner).no_wrap());
+		for (classname, assign) in assignments {
 			let due_date = assign.due_date.format(time_format_str).to_string();
 			let uid = {
 				let mut h = DefaultHasher::new();
@@ -139,12 +142,15 @@ fn make_todo_list(todolist: &TodoList, vert: &mut LinearLayout) {
 					let mut todolist = s.user_data::<Arc<RefCell<TodoList>>>().unwrap().borrow_mut();
 					todolist.set_assignment_completion(uid, checked).unwrap();
 				});
+			
 			vert.add_child(LinearLayout::horizontal()
 				.child(check)
-				.child(TextView::new(" │ "))
-				.child(TextView::new(due_date))
-				.child(TextView::new(" │ "))
-				.child(ScrollView::new(TextView::new(assign.name.clone())).max_width(max_assign_name_len)));
+				.child(TextView::new(" │ ").no_wrap())
+				.child(TextView::new(due_date).no_wrap())
+				.child(TextView::new(" │ ").no_wrap())
+				.child(ScrollView::new(TextView::new(classname).no_wrap().min_width(classname_len).max_width(classname_len)))
+				.child(TextView::new(" │ ").no_wrap())
+				.child(ScrollView::new(TextView::new(assign.name).no_wrap().max_width(max_assign_name_len))));
 		}
 		vert.add_child(DummyView);
 	}
