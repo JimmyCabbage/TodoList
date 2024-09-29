@@ -165,7 +165,7 @@ impl TodoList {
 	}
 
 	pub fn save_to_file(&self) {
-		eprintln!("Saving todolist to file...");
+		//eprintln!("Saving todolist to file...");
 		//if self.list_dir.try_exists().unwrap() {
 			//fs::remove_dir_all(self.list_dir.as_path()).unwrap();
 		//}
@@ -181,9 +181,9 @@ impl TodoList {
 		}
 
 		let json = serde_json::to_string_pretty(&assignments_by_class).unwrap();
-		eprintln!("{}", &json);
+		//eprintln!("{}", &json);
 		TodoList::write_str_to_file(&self.list_path, json);
-		eprintln!("Finish writing todolist...");
+		//eprintln!("Finish writing todolist...");
 	}
 
 	fn read_file_sans_newline<P>(file_path: P) -> String

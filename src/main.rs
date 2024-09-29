@@ -55,6 +55,17 @@ fn main() {
 		.child(week_todo);
 
 	let buttons = LinearLayout::horizontal()
+		.child(Button::new("Save", |s| {
+			{
+				let todolist = s.user_data::<Arc<RefCell<TodoList>>>().unwrap().borrow();
+				todolist.save_to_file();
+			}
+			s.add_layer(Dialog::around(TextView::new("Saved list to file successfully!"))
+				.button("OK", |s| {
+					s.pop_layer();
+				}));
+		}))
+		.child(DummyView)
 		.child(Button::new("Quit", Cursive::quit));
 
 	siv.add_layer(Dialog::around(LinearLayout::vertical()
@@ -66,6 +77,8 @@ fn main() {
 		//.insert(
 
 	siv.run();
+
+	eprintln!("Successfully exited.");
 }
 
 fn make_class_view(todolist: &TodoList, classes_view: &mut SelectView<String>) {
