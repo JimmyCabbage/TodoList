@@ -1,6 +1,4 @@
 use std::env;
-use std::thread;
-use std::sync::mpsc::{self, Sender, Receiver};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::cell::RefCell;
@@ -8,7 +6,7 @@ use std::vec::Vec;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use chrono::{prelude::*, NaiveDateTime, NaiveDate, NaiveTime, Days};
 use cursive::Cursive;
-use cursive::views::{Button, Dialog, DummyView, EditView, TextView, LinearLayout, SelectView, Menubar, ScrollView, Panel, Checkbox, NamedView, ListView};
+use cursive::views::{Button, Dialog, DummyView, EditView, TextView, LinearLayout, SelectView, ScrollView, Checkbox};
 use cursive::traits::*;
 
 mod assignment;

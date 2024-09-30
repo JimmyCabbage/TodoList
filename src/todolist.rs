@@ -1,9 +1,9 @@
 use std::vec::Vec;
 use std::collections::{HashMap,BTreeMap};
 use std::path::{Path, PathBuf};
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::{prelude::*, BufReader, BufWriter};
-use chrono::{prelude::*, NaiveDateTime, NaiveDate, NaiveTime};
+use chrono::NaiveDate;
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 use crate::assignment::Assignment;
