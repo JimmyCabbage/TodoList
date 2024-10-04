@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
 Name=todolist
-Exec=sh -c 'exec 1>~/.todolistlog; exec 2>&1; exec todolist'
+Exec=sh -c 'exec 1>~/.todolistlog; exec 2>&1; export RUST_BACKTRACE=full; exec todolist'
 Icon=todolist
 Terminal=true
