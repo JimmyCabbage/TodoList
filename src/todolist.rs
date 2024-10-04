@@ -210,6 +210,9 @@ impl TodoList {
 			.unwrap();
 		let mut writer = BufWriter::new(file);
 		let _len = writer.write(string.as_bytes()).unwrap();
+		if !string.ends_with('\n') {
+			let _len = writer.write("\n".as_bytes()).unwrap();
+		}
 	}
 }
 
