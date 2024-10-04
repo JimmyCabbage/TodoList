@@ -128,8 +128,18 @@ fn make_todo_list(todolist: &TodoList, vert: &mut LinearLayout) {
 	for date in dates {
 		let assignments = {
 			let mut assignments = assignments_by_date.get(date).unwrap().clone();
-			assignments.sort_by(|(_, a), (_, b)| {
-				a.due_date.cmp(&b.due_date)
+			assignments.sort_by(|(ca, a), (cb, b)| {
+				let a_due = a.due_date;
+				let b_due = b.due_date;
+				if a_due != b_due {
+					a.due_date.cmp(&b.due_date)
+				}
+				else if ca != cb {
+					ca.cmp(&cb)
+				}
+				else {
+					a.name.cmp(&b.name)
+				}
 			});
 			assignments
 		};
