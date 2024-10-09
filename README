@@ -1,0 +1,16 @@
+todolist
+========
+
+A TUI application in order to keep track of todo-list items, and it runs in the
+terminal. Still in a beta-like status, some features are absent (notably,
+editing items after the fact, and deleting items). It was originally made for
+my own purposes in school, so it uses school-like vocabulary (i.e. assignments,
+classes, etc)
+
+The new assignment box takes the date in the YYYY-MM-DD format and the date in
+a HH:MM format (24 hour time).
+
+LICENSE
+=======
+
+Licensed under GPL 2.0 or later (see COPYING)
