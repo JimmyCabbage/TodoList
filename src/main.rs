@@ -304,13 +304,16 @@ fn add_classname(s: &mut Cursive) {
 }
 
 fn add_assignment(s: &mut Cursive, classname: Arc<String>) {
+	let tomorrow = Local::now().date_naive().checked_add_days(Days::new(1)).unwrap();
 	let name = EditView::new()
 		.with_name("new_name")
 		.fixed_width(20);
 	let date = EditView::new()
+		.content(tomorrow.format("%Y-%m-%d").to_string())
 		.with_name("date")
 		.fixed_width(11);
 	let time = EditView::new()
+		.content("08:00")
 		.with_name("time")
 		.fixed_width(6);
 	s.add_layer(Dialog::around(LinearLayout::vertical()
