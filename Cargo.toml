@@ -2,6 +2,7 @@
 name = "todolist"
 version = "0.3.1"
 edition = "2021"
+license = "GPL-2.0-or-later"
 
 [dependencies]
 chrono = { version = "0.4.38", features = ["serde"] }
