@@ -176,20 +176,24 @@ fn make_todo_list(todolist: &TodoList, vert: &mut LinearLayout) {
 				assign.hash(&mut h);
 				h.finish()
 			};
-			let check = Checkbox::new().with_checked(todolist.get_assignment_completion(uid).unwrap())
-				.on_change(move |s, checked| {
-					let mut todolist = s.user_data::<Arc<RefCell<TodoList>>>().unwrap().borrow_mut();
-					todolist.set_assignment_completion(uid, checked).unwrap();
-				});
-			
-			vert.add_child(LinearLayout::horizontal()
-				.child(check)
-				.child(TextView::new(" │ ").no_wrap())
-				.child(TextView::new(due_date).no_wrap())
-				.child(TextView::new(" │ ").no_wrap())
-				.child(ScrollView::new(TextView::new(classname).no_wrap().min_width(classname_len).max_width(classname_len)))
-				.child(TextView::new(" │ ").no_wrap())
-				.child(ScrollView::new(TextView::new(assign.name).no_wrap().max_width(max_assign_name_len))));
+
+			// this should probably error out, but it does
+			if let Ok(already_completed) = todolist.get_assignment_completion(uid) {
+				let check = Checkbox::new().with_checked(already_completed)
+					.on_change(move |s, checked| {
+						let mut todolist = s.user_data::<Arc<RefCell<TodoList>>>().unwrap().borrow_mut();
+						todolist.set_assignment_completion(uid, checked).unwrap();
+					});
+
+				vert.add_child(LinearLayout::horizontal()
+					.child(check)
+					.child(TextView::new(" │ ").no_wrap())
+					.child(TextView::new(due_date).no_wrap())
+					.child(TextView::new(" │ ").no_wrap())
+					.child(ScrollView::new(TextView::new(classname).no_wrap().min_width(classname_len).max_width(classname_len)))
+					.child(TextView::new(" │ ").no_wrap())
+					.child(ScrollView::new(TextView::new(assign.name).no_wrap().max_width(max_assign_name_len))));
+			}
 		}
 		vert.add_child(DummyView);
 	}
