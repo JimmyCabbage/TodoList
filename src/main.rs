@@ -103,8 +103,8 @@ fn make_class_view(todolist: &TodoList, classes_view: &mut SelectView<String>) {
 }
 
 fn make_todo_list(todolist: &TodoList, vert: &mut LinearLayout) {
+	let now = Local::now().date_naive();
 	let assignments_by_date = {
-		let now = Local::now().date_naive();
 		let all_week_assignments = {
 			let begin = now.checked_sub_days(Days::new(3)).unwrap();
 			let end = now.checked_add_days(Days::new(24)).unwrap();
@@ -146,6 +146,7 @@ fn make_todo_list(todolist: &TodoList, vert: &mut LinearLayout) {
 	for date in dates {
 		let assignments = {
 			let mut assignments = assignments_by_date.get(date).unwrap().clone();
+			// sort first by due date, then by classname, then by assign. name
 			assignments.sort_by(|(ca, a), (cb, b)| {
 				let a_due = a.due_date;
 				let b_due = b.due_date;
@@ -161,7 +162,20 @@ fn make_todo_list(todolist: &TodoList, vert: &mut LinearLayout) {
 			});
 			assignments
 		};
-		vert.add_child(TextView::new(date.format("Due %B %e").to_string()));
+
+		// add small little notices of the especially important dates
+		let notice = {
+			if *date == now {
+				" (TODAY)"
+			}
+			else if date.checked_sub_days(Days::new(1)).unwrap() == now {
+				" (TOMORROW)"
+			}
+			else {
+				""
+			}
+		};
+		vert.add_child(TextView::new(format!("{}{}", date.format("Due %B %e").to_string(), &notice)));
 
 		let time_format_str = "%l:%M %p";
 
@@ -197,17 +211,19 @@ fn make_todo_list(todolist: &TodoList, vert: &mut LinearLayout) {
 		}
 		vert.add_child(DummyView);
 	}
-					/*.map(|assign| {
-						let trunc_name = assign.name.chars().into_iter().take(24).collect::<String>();
-						String::from(format!("{:<24} {}\n", trunc_name, assign.due_date.format("Due %B %e, %l:%M %p")))
-					})
-					.fold(String::new(), |prev, s| prev + &s)*/
 }
 
+// returns a string of all assigments from 3 days ago to infinity
+// each assignment is seperated by newline
 fn get_assign_text(todolist: &TodoList, classname: String) -> String {
-	let assignments = todolist.get_class_assignments(&classname).unwrap();
+	let assignments = {
+		let mut assignments = todolist.get_class_assignments(&classname).unwrap();
+		assignments.sort();
+		assignments
+	};
 	let now = Local::now().date_naive();
 
+	// transform each assignment into a string, then move each string into a megastring to return
 	assignments.iter()
 		.filter_map(|assign| {
 			let offset = (assign.due_date.date_naive() - now).num_seconds();
@@ -226,6 +242,7 @@ fn get_assign_text(todolist: &TodoList, classname: String) -> String {
 		.fold(String::new(), |prev, s| prev + &s)
 }
 
+// opens up a menu with information and modifiers on this specific class targeted by name
 fn select_class(s: &mut Cursive, name: Arc<String>) {
 	let list = {
 		let todolist = s.user_data::<Arc<RefCell<TodoList>>>().unwrap().borrow();

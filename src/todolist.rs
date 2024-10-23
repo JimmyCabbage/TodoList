@@ -55,7 +55,7 @@ impl TodoList {
 					uids_by_class.get_mut(&class).unwrap().push(uid);
 				}
 			}
-			
+
 			Ok(Self {
 				uids_by_class,
 				assignment_by_uid,
