@@ -107,7 +107,7 @@ fn make_todo_list(todolist: &TodoList, vert: &mut LinearLayout) {
 		let now = Local::now().date_naive();
 		let all_week_assignments = {
 			let begin = now.checked_sub_days(Days::new(3)).unwrap();
-			let end = now.checked_add_days(Days::new(10)).unwrap();
+			let end = now.checked_add_days(Days::new(24)).unwrap();
 			todolist.get_timespan_assignments(begin, end)
 		};
 
@@ -212,8 +212,8 @@ fn get_assign_text(todolist: &TodoList, classname: String) -> String {
 		.filter_map(|assign| {
 			let offset = (assign.due_date.date_naive() - now).num_seconds();
 
-			// only write if the deadline hasn't passed, or if it's not more than 10 days away from today or 3 days earlier than today
-			if offset >= -(60 * 60 * 24 * 3) && offset < 60 * 60 * 24 * 10 {
+			// only write if it's not more than 3 days earlier than today
+			if offset >= -(60 * 60 * 24 * 3) {
 				Some(format!("{:<32} {}\n",
 						assign.name,
 						assign.due_date.format("Due %B %e, %l:%M %p"))
