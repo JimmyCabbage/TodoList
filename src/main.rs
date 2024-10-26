@@ -175,7 +175,7 @@ fn make_todo_list(todolist: &TodoList, vert: &mut LinearLayout) {
 				""
 			}
 		};
-		vert.add_child(TextView::new(format!("{}{}", date.format("Due %B %e").to_string(), &notice)));
+		vert.add_child(TextView::new(format!("{}{}", date.format("Due %a, %b %e").to_string(), &notice)));
 
 		let time_format_str = "%l:%M %p";
 
@@ -232,7 +232,7 @@ fn get_assign_text(todolist: &TodoList, classname: String) -> String {
 			if offset >= -(60 * 60 * 24 * 3) {
 				Some(format!("{:<32} {}\n",
 						assign.name,
-						assign.due_date.format("Due %B %e, %l:%M %p"))
+						assign.due_date.format("Due %a, %B %e, %l:%M %p"))
 					.to_string())
 			}
 			else {
