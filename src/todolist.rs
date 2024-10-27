@@ -19,10 +19,12 @@ along with this program; if not, see
 use std::vec::Vec;
 use std::collections::{HashMap,BTreeMap};
 use std::path::{Path, PathBuf};
-use std::fs::File;
+use std::fs::{self,File};
 use std::io::{prelude::*, BufReader, BufWriter};
-use chrono::NaiveDate;
+use chrono::{NaiveDate, NaiveTime, NaiveDateTime, Local};
+use chrono::offset::MappedLocalTime;
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::process::Command;
 
 use crate::assignment::Assignment;
 
@@ -34,7 +36,7 @@ pub struct TodoList {
 }
 
 impl TodoList {
-	pub fn new<P>(load_path: P) -> Result<Self,&'static str>
+	pub fn new<P>(load_path: P, script_path: P) -> Result<Self,&'static str>
 		where P: AsRef<Path>
 	{
 		if load_path.as_ref().exists() && load_path.as_ref().is_file() {
@@ -56,6 +58,50 @@ impl TodoList {
 				}
 			}
 
+			if script_path.as_ref().exists() && script_path.as_ref().is_dir() {
+				for entry in fs::read_dir(script_path).unwrap() {
+					let entry = entry.unwrap();
+					if entry.file_type().unwrap().is_file() {
+						if let Ok(output) = Command::new(entry.path()).output()
+						{
+							if let Ok(lines) = String::from_utf8(output.stdout) {
+								for line in lines.lines() {
+									let tokens: Vec<&str> = line.split(",")
+										.collect();
+									if tokens.len() != 4 {
+										continue;
+									}
+									if let (Ok(date), Ok(time)) = (NaiveDate::parse_from_str(tokens[2], "%Y-%m-%d"), NaiveTime::parse_from_str(tokens[3], "%H:%M"))
+									{
+										if let MappedLocalTime::Single(due_date) = NaiveDateTime::new(date, time).and_local_timezone(Local) {
+											let classname = tokens[0];
+											let name = tokens[1];
+											let assign = Assignment{
+												due_date,
+												name: name.to_string(),
+												completed: false,
+											};
+											let uid = {
+												let mut h = DefaultHasher::new();
+												assign.hash(&mut h);
+												h.finish()
+											};
+											if assignment_by_uid.contains_key(&uid) {
+												continue;
+											}
+											assignment_by_uid.insert(uid, assign);
+											if let Some(uids) = uids_by_class.get_mut(classname) {
+												uids.push(uid);
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+
 			Ok(Self {
 				uids_by_class,
 				assignment_by_uid,
@@ -63,7 +109,11 @@ impl TodoList {
 			})
 		}
 		else {
-			Err("load_path isn't a proper file")
+			Ok(Self {
+				uids_by_class: HashMap::new(),
+				assignment_by_uid: HashMap::new(),
+				list_path: PathBuf::from(load_path.as_ref()),
+			})
 		}
 	}
 

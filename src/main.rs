@@ -35,7 +35,8 @@ use todolist::TodoList;
 
 fn main() {
 	let listpath = env::var("HOME").unwrap() + "/.todolist";
-	let todolist = Arc::new(RefCell::new(TodoList::new(listpath).unwrap()));
+	let scriptpath = env::var("HOME").unwrap() + "/.todolistrc";
+	let todolist = Arc::new(RefCell::new(TodoList::new(listpath, scriptpath).unwrap()));
 
 	let mut siv = cursive::default();
 	siv.set_user_data(todolist.clone());
