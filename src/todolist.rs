@@ -25,14 +25,31 @@ use chrono::{NaiveDate, NaiveTime, NaiveDateTime, Local};
 use chrono::offset::MappedLocalTime;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::process::Command;
+use serde::{Deserialize, Serialize};
 
 use crate::assignment::Assignment;
+use crate::assignment::AssignmentV1;
 
 pub struct TodoList {
 	// class name to assignment ids
 	uids_by_class: HashMap<String, Vec<u64>>,
 	assignment_by_uid: HashMap<u64, Assignment>,
+	completed_by_uid: HashMap<u64, bool>,
+	ghost_uids: Vec<u64>,
 	list_path: PathBuf,
+}
+
+type TodoListV1 = BTreeMap<String, Vec<AssignmentV1>>;
+#[derive(Serialize, Deserialize)]
+struct TodoListV2 {
+	version: u8,
+	assignments: BTreeMap<String, Vec<(Assignment, bool)>>,
+}
+
+struct TodoListParsed {
+	uids_by_class: HashMap<String, Vec<u64>>,
+	assignment_by_uid: HashMap<u64, Assignment>,
+	completed_by_uid: HashMap<u64, bool>,
 }
 
 impl TodoList {
@@ -41,10 +58,99 @@ impl TodoList {
 	{
 		if load_path.as_ref().exists() && load_path.as_ref().is_file() {
 			let list_str = TodoList::read_file_sans_newline(&load_path);
-			let assignments_by_class = serde_json::from_str::<BTreeMap<String, Vec<Assignment>>>(&list_str).unwrap();
+			let parsed;
+			if let Ok(v1) = Self::parse_v1(&list_str) {
+				parsed = v1;
+			}
+			else if let Ok(v2) = Self::parse_v2(&list_str) {
+				parsed = v2;
+			}
+			else {
+				return Err("Failed to parse todolist");
+			}
 
+			let mut uids_by_class = parsed.uids_by_class;
+			let mut assignment_by_uid = parsed.assignment_by_uid;
+			let mut completed_by_uid = parsed.completed_by_uid;
+			let mut ghost_uids = Vec::new();
+
+			if script_path.as_ref().exists() && script_path.as_ref().is_dir() {
+				fs::read_dir(script_path)
+					.unwrap()
+					.for_each(|entry| {
+						let entry = entry.unwrap();
+
+						if !entry.file_type().unwrap().is_file() {
+							return;
+						}
+
+						if let Ok(output) = Command::new(entry.path()).output() {
+							if let Ok(lines) = String::from_utf8(output.stdout) {
+								lines.lines()
+									.for_each(|line| {
+										let tokens: Vec<&str> = line.split(",")
+											.collect();
+
+										if tokens.len() != 4 {
+											return;
+										}
+
+										if let (Ok(date), Ok(time)) = (NaiveDate::parse_from_str(tokens[2], "%Y-%m-%d"), NaiveTime::parse_from_str(tokens[3], "%H:%M"))
+										{
+											if let MappedLocalTime::Single(due_date) = NaiveDateTime::new(date, time).and_local_timezone(Local) {
+												let classname = tokens[0];
+												let name = tokens[1];
+												let assign = Assignment{
+													due_date,
+													name: name.to_string(),
+												};
+												let uid = {
+													let mut h = DefaultHasher::new();
+													assign.hash(&mut h);
+													h.finish()
+												};
+												if assignment_by_uid.contains_key(&uid) {
+													return;
+												}
+												assignment_by_uid.insert(uid, assign);
+												completed_by_uid.insert(uid, false);
+												ghost_uids.push(uid);
+												if let Some(uids) = uids_by_class.get_mut(classname) {
+													uids.push(uid);
+												}
+											}
+										}
+									});
+							}
+						}
+
+					});
+			}
+
+			Ok(Self {
+				uids_by_class,
+				assignment_by_uid,
+				completed_by_uid,
+				ghost_uids,
+				list_path: PathBuf::from(load_path.as_ref()),
+			})
+		}
+		else {
+			Ok(Self {
+				uids_by_class: HashMap::new(),
+				assignment_by_uid: HashMap::new(),
+				completed_by_uid: HashMap::new(),
+				ghost_uids: Vec::new(),
+				list_path: PathBuf::from(load_path.as_ref()),
+			})
+		}
+	}
+
+	fn parse_v1(list_str: &String) -> Result<TodoListParsed, &'static str> {
+		if let Ok(assignments_by_class) = serde_json::from_str::<TodoListV1>(&list_str) {
 			let mut uids_by_class = HashMap::new();
 			let mut assignment_by_uid = HashMap::new();
+			let mut completed_by_uid = HashMap::new();
 			for (class, assignments) in assignments_by_class {
 				uids_by_class.insert(class.clone(), vec![]);
 				for assign in assignments {
@@ -53,67 +159,53 @@ impl TodoList {
 						assign.hash(&mut h);
 						h.finish()
 					};
+					let completed = assign.completed;
+					let assign = Assignment{
+						due_date: assign.due_date,
+						name: assign.name,
+					};
 					assignment_by_uid.insert(uid, assign);
+					completed_by_uid.insert(uid, completed);
 					uids_by_class.get_mut(&class).unwrap().push(uid);
 				}
 			}
 
-			if script_path.as_ref().exists() && script_path.as_ref().is_dir() {
-				for entry in fs::read_dir(script_path).unwrap() {
-					let entry = entry.unwrap();
-					if entry.file_type().unwrap().is_file() {
-						if let Ok(output) = Command::new(entry.path()).output()
-						{
-							if let Ok(lines) = String::from_utf8(output.stdout) {
-								for line in lines.lines() {
-									let tokens: Vec<&str> = line.split(",")
-										.collect();
-									if tokens.len() != 4 {
-										continue;
-									}
-									if let (Ok(date), Ok(time)) = (NaiveDate::parse_from_str(tokens[2], "%Y-%m-%d"), NaiveTime::parse_from_str(tokens[3], "%H:%M"))
-									{
-										if let MappedLocalTime::Single(due_date) = NaiveDateTime::new(date, time).and_local_timezone(Local) {
-											let classname = tokens[0];
-											let name = tokens[1];
-											let assign = Assignment{
-												due_date,
-												name: name.to_string(),
-												completed: false,
-											};
-											let uid = {
-												let mut h = DefaultHasher::new();
-												assign.hash(&mut h);
-												h.finish()
-											};
-											if assignment_by_uid.contains_key(&uid) {
-												continue;
-											}
-											assignment_by_uid.insert(uid, assign);
-											if let Some(uids) = uids_by_class.get_mut(classname) {
-												uids.push(uid);
-											}
-										}
-									}
-								}
-							}
-						}
-					}
+			Ok(TodoListParsed{
+				uids_by_class,
+				assignment_by_uid,
+				completed_by_uid,})
+		}
+		else {
+			Err("Failed to read file as V1")
+		}
+	}
+
+	fn parse_v2(list_str: &String) -> Result<TodoListParsed,&'static str> {
+		if let Ok(todo_list_file) = serde_json::from_str::<TodoListV2>(&list_str) {
+			let mut uids_by_class = HashMap::new();
+			let mut assignment_by_uid = HashMap::new();
+			let mut completed_by_uid = HashMap::new();
+			for (class, assignments) in todo_list_file.assignments {
+				uids_by_class.insert(class.clone(), vec![]);
+				for (assign, completed) in assignments {
+					let uid = {
+						let mut h = DefaultHasher::new();
+						assign.hash(&mut h);
+						h.finish()
+					};
+					assignment_by_uid.insert(uid, assign);
+					completed_by_uid.insert(uid, completed);
+					uids_by_class.get_mut(&class).unwrap().push(uid);
 				}
 			}
 
-			Ok(Self {
+			Ok(TodoListParsed{
 				uids_by_class,
 				assignment_by_uid,
-				list_path: PathBuf::from(load_path.as_ref()),
-			})
+				completed_by_uid,})
 		}
 		else {
-			Ok(Self {
-				uids_by_class: HashMap::new(),
-				assignment_by_uid: HashMap::new(),
-				list_path: PathBuf::from(load_path.as_ref()),
-			})
+			Err("Failed to read file as V2")
 		}
 	}
 
@@ -165,6 +257,7 @@ impl TodoList {
 				else {
 					class.push(uid);
 					self.assignment_by_uid.insert(uid, assignment);
+					self.completed_by_uid.insert(uid, false);
 					Ok(uid)
 				}
 			},
@@ -214,9 +307,9 @@ impl TodoList {
 	}
 
 	pub fn set_assignment_completion(&mut self, uid: u64, completed: bool) -> Result<(), ()> {
-		match self.assignment_by_uid.get_mut(&uid) {
-			Some (assign) => {
-				assign.completed = completed;
+		match self.completed_by_uid.get_mut(&uid) {
+			Some(comp) => {
+				*comp = completed;
 				Ok(())
 			},
 			None => Err(()),
@@ -224,9 +317,9 @@ impl TodoList {
 	}
 
 	pub fn get_assignment_completion(&self, uid: u64) -> Result<bool, ()> {
-		match self.assignment_by_uid.get(&uid) {
-			Some (assign) => {
-				Ok(assign.completed)
+		match self.completed_by_uid.get(&uid) {
+			Some (comp) => {
+				Ok(*comp)
 			},
 			None => Err(()),
 		}
@@ -238,20 +331,25 @@ impl TodoList {
 			//fs::remove_dir_all(self.list_dir.as_path()).unwrap();
 		//}
 
-		let mut assignments_by_class = BTreeMap::<String, Vec<Assignment>>::new();
+		let mut serialize = TodoListV2{
+			version: 2,
+			assignments: BTreeMap::<_, _>::new(),
+		};
 		for (class, uids) in &self.uids_by_class {
-			assignments_by_class.insert(class.clone(), vec![]);
+			let mut assignments = vec![];
 			for uid in uids {
 				let assign = self.assignment_by_uid.get(&uid).unwrap();
-				let assignments = assignments_by_class.get_mut(class).unwrap();
-				assignments.push(assign.clone());
+				let completed = *self.completed_by_uid.get(&uid).unwrap();
+				let is_ghost = self.ghost_uids.contains(uid);
+				if !is_ghost || (is_ghost && completed) {
+					assignments.push((assign.clone(), completed));
+				}
 			}
+			serialize.assignments.insert(class.clone(), assignments);
 		}
 
-		let json = serde_json::to_string_pretty(&assignments_by_class).unwrap();
-		//eprintln!("{}", &json);
+		let json = serde_json::to_string_pretty(&serialize).unwrap();
 		TodoList::write_str_to_file(&self.list_path, json);
-		//eprintln!("Finish writing todolist...");
 	}
 
 	fn read_file_sans_newline<P>(file_path: P) -> String
@@ -295,6 +393,8 @@ impl Clone for TodoList {
 		Self {
 			uids_by_class: self.uids_by_class.clone(),
 			assignment_by_uid: self.assignment_by_uid.clone(),
+			completed_by_uid: self.completed_by_uid.clone(),
+			ghost_uids: self.ghost_uids.clone(),
 			list_path: self.list_path.clone(),
 		}
 	}
@@ -304,6 +404,8 @@ impl PartialEq for TodoList {
 	fn eq(&self, other: &Self) -> bool {
 		self.uids_by_class == other.uids_by_class &&
 			self.assignment_by_uid == other.assignment_by_uid &&
+			self.completed_by_uid == other.completed_by_uid &&
+			self.ghost_uids == other.ghost_uids &&
 			self.list_path == other.list_path
 	}
 }

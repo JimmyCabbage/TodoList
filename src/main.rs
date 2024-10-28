@@ -367,7 +367,6 @@ fn add_assignment(s: &mut Cursive, classname: Arc<String>) {
 					Some(todolist.create_assignment(classname.to_string(), Assignment {
 							due_date,
 							name: (*name).clone(),
-							completed: false,
 						}).unwrap())
 				}
 				else {
