@@ -29,14 +29,17 @@ use cursive::traits::*;
 
 mod assignment;
 mod todolist;
+mod landlock;
 
 use assignment::Assignment;
 use todolist::TodoList;
+use landlock::landlock_restrict;
 
 fn main() {
 	let listpath = env::var("HOME").unwrap() + "/.todolist";
-	let scriptpath = env::var("HOME").unwrap() + "/.todolistrc";
-	let todolist = Arc::new(RefCell::new(TodoList::new(listpath, scriptpath).unwrap()));
+	let scriptspath = env::var("HOME").unwrap() + "/.todolistrc";
+	landlock_restrict(&[&listpath, &scriptspath]);
+	let todolist = Arc::new(RefCell::new(TodoList::new(listpath, scriptspath).unwrap()));
 
 	let mut siv = cursive::default();
 	siv.set_user_data(todolist.clone());
