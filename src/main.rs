@@ -22,23 +22,34 @@ use std::sync::Arc;
 use std::cell::RefCell;
 use std::vec::Vec;
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::io::BufWriter;
+use std::fs::File;
 use chrono::{prelude::*, NaiveDateTime, NaiveDate, NaiveTime, Days};
 use cursive::Cursive;
 use cursive::views::{Button, Dialog, DummyView, EditView, TextView, LinearLayout, SelectView, ScrollView, Checkbox};
 use cursive::traits::*;
+use simplelog::WriteLogger;
+use log;
 
 mod assignment;
 mod todolist;
-mod landlock;
+mod landlock_sandbox;
 
 use assignment::Assignment;
 use todolist::TodoList;
-use landlock::landlock_restrict;
+use landlock_sandbox::landlock_restrict;
 
 fn main() {
-	let listpath = env::var("HOME").unwrap() + "/.todolist";
-	let scriptspath = env::var("HOME").unwrap() + "/.todolistrc";
-	landlock_restrict(&[&listpath, &scriptspath]);
+	let home = env::var("HOME").unwrap();
+	let logpath = home.clone() + "/.todolistlog";
+	let listpath = home.clone() + "/.todolist";
+	let scriptspath = home + "/.todolistrc";
+	landlock_restrict(&[&listpath, &logpath], &[&scriptspath]);
+
+	WriteLogger::init(log::LevelFilter::Debug,
+		simplelog::Config::default(),
+		BufWriter::new(File::create(logpath).unwrap())).unwrap();
+
 	let todolist = Arc::new(RefCell::new(TodoList::new(listpath, scriptspath).unwrap()));
 
 	let mut siv = cursive::default();
@@ -98,7 +109,9 @@ fn main() {
 
 	siv.run();
 
-	eprintln!("Successfully exited.");
+	log::info!("Successfully exited.");
+
+	log::logger().flush();
 }
 
 fn make_class_view(todolist: &TodoList, classes_view: &mut SelectView<String>) {

@@ -6,8 +6,10 @@ use landlock::{
 	path_beneath_rules,
 };
 
+use log;
+
 #[cfg(target_os = "linux")]
-pub fn landlock_restrict(rw_dirs: &[&String]) {
+pub fn landlock_restrict(rw_dirs: &[&String], r_dirs: &[&String]) {
 	let abi = ABI::V1;
 	let read_dirs = [
 		"/usr", "/etc", "/dev",
@@ -20,15 +22,16 @@ pub fn landlock_restrict(rw_dirs: &[&String]) {
 		.handle_access(AccessFs::from_all(abi)).unwrap()
 		.create().unwrap()
 		.add_rules(path_beneath_rules(&read_dirs, AccessFs::from_read(abi))).unwrap()
+		.add_rules(path_beneath_rules(r_dirs, AccessFs::from_read(abi))).unwrap()
 		.add_rules(path_beneath_rules(&all_dirs, AccessFs::from_all(abi))).unwrap()
 		.add_rules(path_beneath_rules(rw_dirs, AccessFs::from_all(abi))).unwrap()
 		.restrict_self().unwrap();
 	match status.ruleset {
-		RulesetStatus::FullyEnforced => eprintln!("Landlock fully enforced"),
-		RulesetStatus::PartiallyEnforced => eprintln!("Landlock partially enforced"),
-		RulesetStatus::NotEnforced => eprintln!("WARNING: landlock unenforced"),
+		RulesetStatus::FullyEnforced => log::info!("Landlock fully enforced"),
+		RulesetStatus::PartiallyEnforced => log::warn!("Landlock partially enforced"),
+		RulesetStatus::NotEnforced => log::warn!("Landlock unenforced"),
 	}
 }
 
 #[cfg(not(target_os = "linux"))]
-pub fn landlock_restrict(_rw_dirs: &[&String]) {}
+pub fn landlock_restrict(_rw_dirs: &[&String], _r_dirs: &[&String]) {}

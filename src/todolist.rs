@@ -26,6 +26,7 @@ use chrono::offset::MappedLocalTime;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::process::Command;
 use serde::{Deserialize, Serialize};
+use log;
 
 use crate::assignment::Assignment;
 use crate::assignment::AssignmentV1;
@@ -326,7 +327,7 @@ impl TodoList {
 	}
 
 	pub fn save_to_file(&self) {
-		eprintln!("Saving todolist to file...");
+		log::info!("Saving todolist to file...");
 		//if self.list_dir.try_exists().unwrap() {
 			//fs::remove_dir_all(self.list_dir.as_path()).unwrap();
 		//}
