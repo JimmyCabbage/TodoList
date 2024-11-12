@@ -1,6 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=todolist
-Exec=sh -c 'exec todolist'
-Icon=todolist
-Terminal=true
