@@ -23,13 +23,15 @@ use std::cell::RefCell;
 use std::vec::Vec;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::BufWriter;
-use std::fs::File;
+use std::fs::{self,File};
+use std::path::PathBuf;
 use chrono::{prelude::*, NaiveDateTime, NaiveDate, NaiveTime, Days};
 use cursive::Cursive;
 use cursive::views::{Button, Dialog, DummyView, EditView, TextView, LinearLayout, SelectView, ScrollView, Checkbox};
 use cursive::traits::*;
 use simplelog::WriteLogger;
 use log;
+use directories::ProjectDirs;
 
 mod assignment;
 mod todolist;
@@ -40,11 +42,48 @@ use todolist::TodoList;
 use landlock_sandbox::landlock_restrict;
 
 fn main() {
-	let home = env::var("HOME").unwrap();
-	let logpath = home.clone() + "/.todolistlog";
-	let listpath = home.clone() + "/.todolist";
-	let scriptspath = home + "/.todolistrc";
-	landlock_restrict(&[&listpath, &logpath], &[&scriptspath]);
+	let proj_dirs = ProjectDirs::from("com.ryanrhee", "", "TodoList").unwrap();
+	let logpath = {
+		let mut logpath = PathBuf::new();
+		// because state directory is not available in every platform,
+		// put log file in local data if state is not available
+		if let Some(state) = proj_dirs.state_dir() {
+			fs::create_dir_all(state).unwrap();
+			logpath.push(state);
+		}
+		else {
+			let data = proj_dirs.data_local_dir();
+			fs::create_dir_all(data).unwrap();
+			logpath.push(data);
+		}
+		logpath.push("log");
+		logpath
+	};
+	let listparentpath = {
+		let data = proj_dirs.data_dir();
+		fs::create_dir_all(data).unwrap();
+
+		let mut listpath = PathBuf::new();
+		listpath.push(data);
+		listpath
+	};
+	let listpath = {
+		let mut listpath = listparentpath.clone();
+		listpath.push("list");
+		listpath
+	};
+	let scriptspath = {
+		let mut scriptspath = PathBuf::new();
+		scriptspath.push(proj_dirs.config_dir());
+		scriptspath.push("scripts");
+
+		fs::create_dir_all(&scriptspath).unwrap();
+
+		scriptspath
+	};
+
+	let _ = File::create_new(&logpath);
+	landlock_restrict(&[&listparentpath, &listpath, &logpath], &[&scriptspath]);
 
 	WriteLogger::init(log::LevelFilter::Debug,
 		simplelog::Config::default(),

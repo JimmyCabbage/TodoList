@@ -67,7 +67,7 @@ impl TodoList {
 				parsed = v2;
 			}
 			else {
-				return Err("Failed to parse todolist");
+				return Err("Failed to parse log file, pretending it's blank");
 			}
 
 			let mut uids_by_class = parsed.uids_by_class;
@@ -137,6 +137,8 @@ impl TodoList {
 			})
 		}
 		else {
+			log::info!("Couldn't read todolist at {}, creating blank one", load_path.as_ref().display());
+			let _ = File::create_new(&load_path);
 			Ok(Self {
 				uids_by_class: HashMap::new(),
 				assignment_by_uid: HashMap::new(),

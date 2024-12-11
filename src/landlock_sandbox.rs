@@ -7,9 +7,10 @@ use landlock::{
 };
 
 use log;
+use std::path::PathBuf;
 
 #[cfg(target_os = "linux")]
-pub fn landlock_restrict(rw_dirs: &[&String], r_dirs: &[&String]) {
+pub fn landlock_restrict(rw_dirs: &[&PathBuf], r_dirs: &[&PathBuf]) {
 	let abi = ABI::V1;
 	let read_dirs = [
 		"/usr", "/etc", "/dev",
@@ -34,4 +35,4 @@ pub fn landlock_restrict(rw_dirs: &[&String], r_dirs: &[&String]) {
 }
 
 #[cfg(not(target_os = "linux"))]
-pub fn landlock_restrict(_rw_dirs: &[&String], _r_dirs: &[&String]) {}
+pub fn landlock_restrict(_rw_dirs: &[&PathBuf], _r_dirs: &[&PathBuf]) {}
